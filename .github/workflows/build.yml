@@ -1,0 +1,76 @@
+
+name: Build MotionGlass v0.2 Fixed
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'MotionGlass-v0.2-Source.zip'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f MotionGlass-v0.2-Source.zip
+          mkdir -p project
+          unzip -q MotionGlass-v0.2-Source.zip -d project
+          test -f project/app/build.gradle
+          test -f project/tests/test_spring.py
+          echo "Source extracted successfully"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Test spring animation
+        working-directory: project
+        run: python3 tests/test_spring.py
+
+      - name: Build MotionGlass APK
+        working-directory: project
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee build.log
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotionGlass-v0.2-APK
+          path: project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload error log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotionGlass-Build-Error
+          path: project/build.log
+          if-no-files-found: warn
